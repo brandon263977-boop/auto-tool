@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>自動排班系統</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* VOICE: 店長的工作工具，清楚、直接
+   IDEA: 就是店裡那張 Excel 班表，變成會自己排的
+   PICTURE: 班表本身放最上面
+   COLOUR and TYPE: 白底黑字，假日黃底、指定休紅、系統休藍；Noto Sans TC
+   LAYOUT: 標題列 + 工具列 + 班表（可橫向捲動），下方說明 */
+:root{color-scheme:light dark;--bg:light-dark(#ffffff,#15171a);--ink:light-dark(#16181b,#eceef0);--mute:light-dark(#646a72,#9aa1a9);--line:light-dark(#d9dce0,#33373d);--hol:light-dark(#ffe08a,#5a4a14);--red:light-dark(#d4161c,#ff6b6b);--blue:light-dark(#7d9fd6,#7fa3dd);--ok:light-dark(#1f7a3e,#5fd38a);--panel:light-dark(#f4f5f7,#1e2126);--acc:light-dark(#16181b,#eceef0);--accInk:light-dark(#fff,#15171a)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "Noto Sans TC",system-ui,sans-serif;overflow-x:clip}
+header{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;justify-content:space-between;padding:20px max(3vw,14px) 12px}
+h1{font-size:clamp(24px,3vw,34px);line-height:1.1;margin:0;font-weight:700}
+.mnav{display:flex;align-items:center;gap:6px}
+.mnav b{font-size:20px;min-width:7.5em;text-align:center}
+button{font:inherit;font-size:15px;min-height:44px;padding:0 16px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+button.pri{background:var(--acc);color:var(--accInk);border-color:var(--acc);font-weight:700}
+button:disabled{opacity:.6}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:0 max(3vw,14px) 10px}
+.bar .grow{flex:1}
+#save{color:var(--mute);font-size:13px}
+.status{margin:0 max(3vw,14px) 10px;padding:10px 14px;border-radius:8px;background:var(--panel);font-size:15px}
+.status.ok{color:var(--ok)}.status.bad{color:var(--red)}
+.wrap{overflow-x:auto;margin:0 max(3vw,14px);border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{border:1px solid var(--line);text-align:center;padding:0;height:34px;min-width:34px;font-size:15px}
+th.nm{position:sticky;left:0;z-index:2;background:var(--bg);min-width:80px;padding:0 10px;text-align:left;font-weight:700;white-space:nowrap}
+th.dh{cursor:pointer;font-weight:400;height:auto;padding:4px 0;line-height:1.2}
+th.dh b{display:block;font-size:15px}th.dh span{display:block;font-size:13px}th.dh i{display:block;font-style:normal;font-size:11px;color:var(--mute)}
+th.dh.ovr i{color:var(--red);font-weight:700}
+.hol{background:var(--hol)}
+td.c{cursor:pointer;font-weight:500}
+td.c:hover{outline:2px solid var(--blue);outline-offset:-2px}
+td.red{color:var(--red);font-weight:700}td.blue{color:var(--blue)}
+td.fix{text-decoration:underline;text-underline-offset:3px;font-weight:700}
+td.sum{min-width:44px;font-weight:700}td.sum.warn{color:var(--red)}
+th.sum{min-width:44px}
+tr.sep td{background:var(--ink);height:8px}
+tr.gap td{border:0;height:10px}
+tr.cnt td{font-weight:700}tr.cnt td.bad{color:#fff;background:var(--red)}
+tr.need td{font-weight:400;font-size:12px;color:var(--mute)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;padding:12px max(3vw,14px);font-size:14px;color:var(--mute)}
+.legend b{color:var(--ink)}
+.help{padding:4px max(3vw,14px) 32px;max-width:900px;font-size:15px}
+.help h2{font-size:18px;margin:16px 0 6px}
+.help ol{margin:0;padding-left:1.3em}
+#note{font-size:13px;color:var(--mute)}
+#pop{position:fixed;z-index:20;background:var(--bg);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgb(0 0 0/.18);padding:6px;display:flex;flex-direction:column;min-width:200px}
+#pop[hidden],#dlg[hidden]{display:none}
+#pop button{border:0;text-align:left;border-radius:6px}
+#pop button:hover{background:var(--panel)}
+#pop .red{color:var(--red);font-weight:700}#pop .clear{color:var(--mute)}
+#dlg{position:fixed;inset:0;z-index:30;background:rgb(0 0 0/.4);display:flex;align-items:flex-start;justify-content:center;padding:4vh 10px;overflow:auto}
+.card{background:var(--bg);border-radius:12px;padding:20px;width:min(900px,100%)}
+.card h2{margin:0 0 4px;font-size:20px}.card p{margin:0 0 12px;color:var(--mute);font-size:14px}
+.srow{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.srow input,.srow select{font:inherit;font-size:16px;min-height:40px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);padding:0 8px}
+.sn{width:7em}.sr input{width:4.2em;margin-left:4px}.sg select{margin-left:4px}
+.chk{display:flex;gap:10px}.chk label{display:flex;align-items:center;gap:3px;font-size:15px}
+.chk input{width:20px;height:20px;min-height:0}
+.mv{display:flex;gap:4px;margin-left:auto}.mv button{min-height:40px;padding:0 12px}
+.actions{display:flex;gap:8px;justify-content:space-between;margin-top:14px;flex-wrap:wrap}
+@media(max-width:600px){header{padding-top:14px}.mnav b{min-width:6.5em;font-size:17px}th,td{min-width:30px;font-size:14px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>自動排班系統</h1>
+  <div class="mnav"><button id="prev" aria-label="上個月">‹</button><b id="month"></b><button id="next" aria-label="下個月">›</button></div>
+</header>
+<div class="bar">
+  <button id="auto" class="pri">自動排班</button>
+  <button id="clear">清除系統排的班</button>
+  <button id="staffBtn">人員設定</button>
+  <button id="xlsx">匯出 Excel</button>
+  <span class="grow"></span><span id="save"></span>
+</div>
+<div id="status" class="status"></div>
+<div class="wrap"><table id="grid"></table></div>
+<div class="legend">
+  <span><b>A</b> 全天 10:30–23:00</span><span><b>B</b> 早班 10:30–18:00</span><span><b>C</b> 晚班1 18:00–23:00</span><span><b>E</b> 晚班3 17:00–22:00（只排週日）</span>
+  <span><b style="color:var(--red)">休</b> 員工指定休</span><span><b style="color:var(--blue)">休</b> 系統排休</span><span>底線＝手動固定的班</span><span id="note"></span>
+</div>
+<section class="help">
+  <h2>每月使用步驟</h2>
+  <ol>
+    <li>按 ‹ › 切到要排的月份。週末和國定假日會自動標成黃底假日。</li>
+    <li>點員工的格子，標「指定休」（紅色）。某天一定要某人上某班，也可以直接固定班別。</li>
+    <li>按「自動排班」。系統會讓每天早晚班人數剛好，並盡量讓每人休假天數接近目標。不滿意可以再按一次，每次排法都不同。</li>
+    <li>要調整日子類型（例如店休、補班），點上方日期就能切換平日／週五／假日／週日。</li>
+    <li>排好後按「匯出 Excel」。</li>
+  </ol>
+  <h2>人數規則</h2>
+  <p>A 同時算早班和晚班各 1 人。平日（一到四）早 2 晚 3，A 最多 1 人。週五早 2 晚 4。假日（週六、國定假日）早 4 晚 5。週日早 4 晚 5，晚班其中 1 人排 E。</p>
+</section>
+<div id="pop" hidden></div>
+<div id="dlg" hidden><div class="card" role="dialog" aria-label="人員設定">
+  <h2>人員設定</h2>
+  <p>勾選每個人能上的班別、能上的日子，以及每月目標休假天數。不同「組」之間會用黑線隔開。</p>
+  <div id="staffList"></div>
+  <div class="actions"><button id="addStaff">＋ 新增人員</button><span><button id="cancelStaff">取消</button> <button id="saveStaff" class="pri">儲存</button></span></div>
+</div></div>
+<script>
+{
+// ===== 排班核心（不碰 DOM，可在 node 測試） =====
+const SHIFTS = ['休', 'A', 'B', 'C', 'E'];
+const SHIFT_INFO = {
+  A: { name: '全天', time: '10:30–23:00', m: 1, e: 1 },
+  B: { name: '早班', time: '10:30–18:00', m: 1, e: 0 },
+  C: { name: '晚班1', time: '18:00–23:00', m: 0, e: 1 },
+  E: { name: '晚班3', time: '17:00–22:00', m: 0, e: 1 }
+};
+// W 平日(一~四)  F 週五  H 假日  S 週日(假日，含 1 個 E)
+const DAY_TYPES = {
+  W: { label: '平日', m: 2, e: 3, amax: 1, eNeed: 0, avail: 'W' },
+  F: { label: '週五', m: 2, e: 4, amax: 1, eNeed: 0, avail: 'F' },
+  H: { label: '假日', m: 4, e: 5, amax: 4, eNeed: 0, avail: 'H' },
+  S: { label: '週日', m: 4, e: 5, amax: 4, eNeed: 1, avail: 'H' }
+};
+const DAY_TYPE_ORDER = ['W', 'F', 'H', 'S'];
+const WEEK = ['日', '一', '二', '三', '四', '五', '六'];
+
+// 行政院人事行政總處公告：115 年 12 月、116 年（2027）政府行政機關辦公日曆表
+const HOLIDAYS = {
+  '2026-12-25': '行憲紀念日',
+  '2027-01-01': '開國紀念日',
+  '2027-02-04': '小年夜', '2027-02-05': '除夕', '2027-02-06': '春節', '2027-02-07': '春節',
+  '2027-02-08': '春節', '2027-02-09': '春節補假', '2027-02-10': '春節補假',
+  '2027-02-28': '和平紀念日', '2027-03-01': '和平紀念日補假',
+  '2027-04-04': '兒童節', '2027-04-05': '清明節', '2027-04-06': '兒童節補假',
+  '2027-04-30': '勞動節補假', '2027-05-01': '勞動節',
+  '2027-06-09': '端午節', '2027-09-15': '中秋節', '2027-09-28': '教師節',
+  '2027-10-10': '國慶日', '2027-10-11': '國慶日補假',
+  '2027-10-25': '臺灣光復暨金門古寧頭大捷紀念日',
+  '2027-12-24': '行憲紀念日補假', '2027-12-25': '行憲紀念日',
+  '2027-12-31': '開國紀念日補假'
+};
+const MAKEUP_WORKDAYS = {}; // 補班日（2027 年沒有）
+const HOLIDAY_RANGE = ['2026-12', '2027-12'];
+
+const pad = n => String(n).padStart(2, '0');
+const monthKey = (y, m) => y + '-' + pad(m);
+const daysIn = (y, m) => new Date(y, m, 0).getDate();
+const dow = (y, m, d) => new Date(y, m - 1, d).getDay();
+const hasHolidayData = (y, m) => { const k = monthKey(y, m); return k >= HOLIDAY_RANGE[0] && k <= HOLIDAY_RANGE[1]; };
+
+function defaultDayType(y, m, d) {
+  const key = monthKey(y, m) + '-' + pad(d), w = dow(y, m, d);
+  if (MAKEUP_WORKDAYS[key]) return w === 5 ? 'F' : 'W';
+  if (w === 0) return 'S';
+  if (w === 6 || HOLIDAYS[key]) return 'H';
+  return w === 5 ? 'F' : 'W';
+}
+
+function dayList(y, m, overrides) {
+  const out = [];
+  for (let d = 1; d <= daysIn(y, m); d++) {
+    const key = monthKey(y, m) + '-' + pad(d);
+    const def = defaultDayType(y, m, d);
+    const type = (overrides && overrides[d]) || def;
+    out.push({ d, w: dow(y, m, d), type, def, holiday: HOLIDAYS[key] || '' });
+  }
+  return out;
+}
+
+const DEFAULT_STAFF = [
+  { id: 's1', name: '正職甲', group: 1, shifts: 'A', days: 'WFH', rest: 8 },
+  { id: 's2', name: '正職乙', group: 1, shifts: 'AB', days: 'WFH', rest: 15 },
+  { id: 's3', name: '員工A', group: 2, shifts: 'ABCE', days: 'WFH', rest: 8 },
+  { id: 's4', name: '員工B', group: 2, shifts: 'ABCE', days: 'WFH', rest: 9 },
+  { id: 's5', name: '員工C', group: 2, shifts: 'ABCE', days: 'WFH', rest: 11 },
+  { id: 's6', name: '員工D', group: 2, shifts: 'ABCE', days: 'WFH', rest: 8 },
+  { id: 's7', name: '員工E', group: 2, shifts: 'ABCE', days: 'WFH', rest: 10 },
+  { id: 's8', name: '兼職A', group: 3, shifts: 'BC', days: 'FH', rest: 23 },
+  { id: 's9', name: '兼職B', group: 3, shifts: 'B', days: 'H', rest: 25 }
+];
+
+// 每日人數統計
+function dayCounts(col) { // col: 該日每人的班別字串陣列
+  let a = 0, b = 0, c = 0, e = 0;
+  for (const v of col) { if (v === 'A') a++; else if (v === 'B') b++; else if (v === 'C') c++; else if (v === 'E') e++; }
+  return { a, b, c, e, m: a + b, ev: a + c + e };
+}
+
+function checkDay(cnt, type) {
+  const t = DAY_TYPES[type], issues = [];
+  if (cnt.m !== t.m) issues.push('早班 ' + cnt.m + '/' + t.m);
+  if (cnt.ev !== t.e) issues.push('晚班 ' + cnt.ev + '/' + t.e);
+  if (cnt.a > t.amax) issues.push('A 超過 ' + t.amax);
+  if (t.eNeed && cnt.e !== t.eNeed) issues.push('E 需 ' + t.eNeed);
+  if (!t.eNeed && cnt.e > 0) issues.push('非週日排了 E');
+  return issues;
+}
+
+// 可排的班別（不含鎖定格）
+function allowedFor(person, type) {
+  const t = DAY_TYPES[type];
+  if (!person.days.includes(t.avail)) return [0];
+  const out = [0];
+  if (person.shifts.includes('A') && t.amax > 0) out.push(1);
+  if (person.shifts.includes('B')) out.push(2);
+  if (person.shifts.includes('C')) out.push(3);
+  if (person.shifts.includes('E') && t.eNeed > 0) out.push(4);
+  return out;
+}
+
+function mulberry(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+/* 自動排班：模擬退火
+   staff: 人員陣列；days: dayList()；fixed[p][d] = 鎖定的班別字串或 null
+   回傳 grid[p][d]（班別字串）與分數 */
+function autoSchedule(staff, days, fixed, opt = {}) {
+  const P = staff.length, D = days.length;
+  const rnd = mulberry(opt.seed ?? (Date.now() & 0xffffffff));
+  const iters = opt.iters ?? 160000, restarts = opt.restarts ?? 4;
+  const maxRun = opt.maxRun ?? 6;
+  const code = { '休': 0, A: 1, B: 2, C: 3, E: 4 };
+  const allow = [], mutable = [];
+  for (let p = 0; p < P; p++) {
+    allow.push([]);
+    for (let d = 0; d < D; d++) {
+      const f = fixed[p] && fixed[p][d];
+      if (f) allow[p].push([code[f]]);
+      else {
+        const a = allowedFor(staff[p], days[d].type);
+        allow[p].push(a);
+        if (a.length > 1) mutable.push(p * D + d);
+      }
+    }
+  }
+  const need = days.map(x => DAY_TYPES[x.type]);
+  const target = staff.map(s => Math.max(0, Math.min(D, Number(s.rest) || 0)));
+
+  const dayPen = (g, d) => {
+    let a = 0, b = 0, c = 0, e = 0;
+    for (let p = 0; p < P; p++) { const v = g[p * D + d]; if (v === 1) a++; else if (v === 2) b++; else if (v === 3) c++; else if (v === 4) e++; }
+    const t = need[d];
+    let pen = 1000 * (Math.abs(a + b - t.m) + Math.abs(a + c + e - t.e));
+    if (a > t.amax) pen += 1000 * (a - t.amax);
+    if (t.eNeed) pen += 1000 * Math.abs(e - t.eNeed);
+    else pen += 1000 * e;
+    return pen;
+  };
+  const personPen = (g, p) => {
+    let rest = 0, run = 0, pen = 0;
+    for (let d = 0; d < D; d++) {
+      const v = g[p * D + d];
+      if (v === 0) { rest++; if (run > maxRun) pen += 80 * (run - maxRun); run = 0; } else run++;
+    }
+    if (run > maxRun) pen += 80 * (run - maxRun);
+    const dev = rest - target[p];
+    return pen + 12 * dev * dev + 30 * Math.abs(dev);
+  };
+
+  let best = null, bestScore = Infinity;
+  for (let r = 0; r < restarts; r++) {
+    const g = new Int8Array(P * D);
+    for (let p = 0; p < P; p++) for (let d = 0; d < D; d++) {
+      const a = allow[p][d];
+      if (a.length === 1) g[p * D + d] = a[0];
+      else g[p * D + d] = rnd() < target[p] / D ? 0 : a[1 + Math.floor(rnd() * (a.length - 1))];
+    }
+    const dp = days.map((_, d) => dayPen(g, d));
+    const pp = staff.map((_, p) => personPen(g, p));
+    let score = dp.reduce((s, x) => s + x, 0) + pp.reduce((s, x) => s + x, 0);
+    let rBest = score, rGrid = g.slice();
+    const T0 = 400, T1 = 0.3;
+    if (!mutable.length) { best = g; bestScore = score; break; }
+    for (let it = 0; it < iters; it++) {
+      const T = T0 * Math.pow(T1 / T0, it / iters);
+      if (rnd() < 0.55) {
+        const idx = mutable[Math.floor(rnd() * mutable.length)], p = Math.floor(idx / D), d = idx % D;
+        const a = allow[p][d], old = g[idx];
+        let nv = a[Math.floor(rnd() * a.length)];
+        if (nv === old) continue;
+        g[idx] = nv;
+        const nd = dayPen(g, d), np = personPen(g, p);
+        const delta = nd - dp[d] + np - pp[p];
+        if (delta <= 0 || rnd() < Math.exp(-delta / T)) { dp[d] = nd; pp[p] = np; score += delta; }
+        else g[idx] = old;
+      } else {
+        const idx = mutable[Math.floor(rnd() * mutable.length)], p1 = Math.floor(idx / D), d = idx % D;
+        const p2 = Math.floor(rnd() * P); if (p2 === p1) continue;
+        const i2 = p2 * D + d, v1 = g[idx], v2 = g[i2];
+        if (v1 === v2 || allow[p2][d].length === 1 || !allow[p1][d].includes(v2) || !allow[p2][d].includes(v1)) continue;
+        g[idx] = v2; g[i2] = v1;
+        const n1 = personPen(g, p1), n2 = personPen(g, p2);
+        const delta = n1 - pp[p1] + n2 - pp[p2];
+        if (delta <= 0 || rnd() < Math.exp(-delta / T)) { pp[p1] = n1; pp[p2] = n2; score += delta; }
+        else { g[idx] = v1; g[i2] = v2; }
+      }
+      if (score < rBest) { rBest = score; rGrid = g.slice(); }
+    }
+    if (rBest < bestScore) { bestScore = rBest; best = rGrid; }
+  }
+  const grid = [];
+  for (let p = 0; p < P; p++) { grid.push([]); for (let d = 0; d < D; d++) grid[p].push(SHIFTS[best[p * D + d]]); }
+  return { grid, score: bestScore };
+}
+
+// ===== 最小 XLSX 產生器（不壓縮 zip） =====
+const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(buf) { let c = 0xFFFFFFFF; for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function zipStore(files) { // files: [{name, data:Uint8Array}]
+  const enc = new TextEncoder(), parts = [], central = []; let offset = 0;
+  for (const f of files) {
+    const name = enc.encode(f.name), crc = crc32(f.data), size = f.data.length;
+    const h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true);
+    h.setUint16(10, 0, true); h.setUint16(12, 0x21, true); h.setUint32(14, crc, true); h.setUint32(18, size, true);
+    h.setUint32(22, size, true); h.setUint16(26, name.length, true); h.setUint16(28, 0, true);
+    parts.push(new Uint8Array(h.buffer), name, f.data);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true);
+    c.setUint16(10, 0, true); c.setUint16(12, 0, true); c.setUint16(14, 0x21, true); c.setUint32(16, crc, true);
+    c.setUint32(20, size, true); c.setUint32(24, size, true); c.setUint16(28, name.length, true);
+    c.setUint32(42, offset, true);
+    central.push(new Uint8Array(c.buffer), name);
+    offset += 30 + name.length + size;
+  }
+  const cSize = central.reduce((s, x) => s + x.length, 0);
+  const e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true);
+  e.setUint32(12, cSize, true); e.setUint32(16, offset, true);
+  const all = [...parts, ...central, new Uint8Array(e.buffer)];
+  const out = new Uint8Array(all.reduce((s, x) => s + x.length, 0)); let o = 0;
+  for (const x of all) { out.set(x, o); o += x.length; }
+  return out;
+}
+const xesc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const colName = n => { let s = ''; n++; while (n) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); } return s; };
+
+// 樣式編號
+const XS = { plain: 0, cell: 1, cellH: 2, bold: 3, boldH: 4, redOff: 5, redOffH: 6, blueOff: 7, blueOffH: 8, black: 9, bad: 10, left: 11, title: 12 };
+const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<fonts count="5"><font><sz val="12"/><name val="微軟正黑體"/></font><font><b/><sz val="12"/><name val="微軟正黑體"/></font><font><b/><sz val="12"/><color rgb="FFFF0000"/><name val="微軟正黑體"/></font><font><sz val="12"/><color rgb="FF8EA9DB"/><name val="微軟正黑體"/></font><font><b/><sz val="14"/><name val="微軟正黑體"/></font></fonts>
+<fills count="5"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFD966"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FF000000"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFC7CE"/><bgColor indexed="64"/></patternFill></fill></fills>
+<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFBFBFBF"/></left><right style="thin"><color rgb="FFBFBFBF"/></right><top style="thin"><color rgb="FFBFBFBF"/></top><bottom style="thin"><color rgb="FFBFBFBF"/></bottom><diagonal/></border></borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="13">
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+<xf numFmtId="0" fontId="0" fillId="2" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+<xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+<xf numFmtId="0" fontId="2" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+<xf numFmtId="0" fontId="2" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+<xf numFmtId="0" fontId="3" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+<xf numFmtId="0" fontId="3" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+<xf numFmtId="0" fontId="0" fillId="3" borderId="0" xfId="0" applyFill="1"/>
+<xf numFmtId="0" fontId="1" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+<xf numFmtId="0" fontId="4" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+</cellXfs>
+<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`;
+
+/* rows: [[{v, s}...]]  v 為字串或數字 */
+function buildXlsx(sheetName, rows, colWidths, freeze) {
+  const enc = new TextEncoder();
+  let sd = '';
+  rows.forEach((row, r) => {
+    sd += `<row r="${r + 1}" ht="22" customHeight="1">`;
+    row.forEach((cell, c) => {
+      if (!cell) return;
+      const ref = colName(c) + (r + 1), s = cell.s ? ` s="${cell.s}"` : '';
+      if (cell.v === '' || cell.v == null) sd += `<c r="${ref}"${s}/>`;
+      else if (typeof cell.v === 'number') sd += `<c r="${ref}"${s}><v>${cell.v}</v></c>`;
+      else sd += `<c r="${ref}"${s} t="inlineStr"><is><t>${xesc(cell.v)}</t></is></c>`;
+    });
+    sd += '</row>';
+  });
+  const cols = '<cols>' + colWidths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('') + '</cols>';
+  const pane = freeze ? `<pane xSplit="${freeze[0]}" ySplit="${freeze[1]}" topLeftCell="${colName(freeze[0])}${freeze[1] + 1}" activePane="bottomRight" state="frozen"/>` : '';
+  const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetViews><sheetView workbookViewId="0">${pane}</sheetView></sheetViews><sheetFormatPr defaultRowHeight="22"/>${cols}<sheetData>${sd}</sheetData><pageMargins left="0.3" right="0.3" top="0.5" bottom="0.5" header="0.3" footer="0.3"/><pageSetup orientation="landscape" paperSize="9" fitToWidth="1" fitToHeight="0"/></worksheet>`;
+  const files = [
+    ['[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`],
+    ['_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
+    ['xl/workbook.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${xesc(sheetName)}" sheetId="1" r:id="rId1"/></sheets></workbook>`],
+    ['xl/_rels/workbook.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
+    ['xl/styles.xml', STYLES_XML],
+    ['xl/worksheets/sheet1.xml', sheet]
+  ].map(([name, s]) => ({ name, data: enc.encode(s) }));
+  return zipStore(files);
+}
+
+/* 把一個月的班表轉成 Excel 列 */
+function rosterRows(y, m, staff, days, cellOf) {
+  const D = days.length, rows = [];
+  const H = d => days[d].type === 'H' || days[d].type === 'S';
+  rows.push([{ v: y + ' 年 ' + m + ' 月 班表', s: XS.title }]);
+  rows.push([{ v: '姓名', s: XS.bold }, ...days.map((x, d) => ({ v: x.d, s: H(d) ? XS.boldH : XS.bold })), null, { v: '休', s: XS.redOff }, { v: '目標', s: XS.bold }]);
+  rows.push([{ v: '星期', s: XS.bold }, ...days.map((x, d) => ({ v: WEEK[x.w], s: H(d) ? XS.boldH : XS.bold }))]);
+  let lastG = null;
+  staff.forEach((s, p) => {
+    if (lastG !== null && s.group !== lastG) rows.push(Array.from({ length: D + 1 }, () => ({ v: '', s: XS.black })));
+    lastG = s.group;
+    let rest = 0;
+    const row = [{ v: s.name, s: XS.bold }];
+    for (let d = 0; d < D; d++) {
+      const c = cellOf(p, d), h = H(d);
+      if (c.v === '休') { rest++; row.push({ v: '休', s: c.lock ? (h ? XS.redOffH : XS.redOff) : (h ? XS.blueOffH : XS.blueOff) }); }
+      else if (c.v) row.push({ v: c.v, s: h ? XS.cellH : XS.cell });
+      else row.push({ v: '', s: h ? XS.cellH : XS.cell });
+    }
+    row.push(null, { v: rest, s: XS.cell }, { v: Number(s.rest) || 0, s: XS.cell });
+    rows.push(row);
+  });
+  rows.push([]);
+  const mRow = [{ v: '早班人數', s: XS.bold }], eRow = [{ v: '晚班人數', s: XS.bold }];
+  for (let d = 0; d < D; d++) {
+    const cnt = dayCounts(staff.map((_, p) => cellOf(p, d).v));
+    const t = DAY_TYPES[days[d].type];
+    mRow.push({ v: cnt.m, s: cnt.m === t.m ? XS.cell : XS.bad });
+    eRow.push({ v: cnt.ev, s: cnt.ev === t.e ? XS.cell : XS.bad });
+  }
+  rows.push(mRow, eRow, []);
+  for (const k of ['A', 'B', 'C', 'E']) rows.push([{ v: k + '（' + SHIFT_INFO[k].name + ' ' + SHIFT_INFO[k].time + '）', s: XS.left }]);
+  rows.push([{ v: '紅色「休」＝員工指定休，藍色「休」＝系統排休，黃底＝假日', s: XS.left }]);
+  return rows;
+}
+
+if (typeof module !== 'undefined') module.exports = { SHIFTS, SHIFT_INFO, DAY_TYPES, HOLIDAYS, dayList, DEFAULT_STAFF, autoSchedule, dayCounts, checkDay, buildXlsx, rosterRows, hasHolidayData };
+
+// ===== 介面 =====
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const now = new Date(Date.now() + 8 * 3600e3);
+let Y = now.getUTCFullYear(), M = now.getUTCMonth() + 2; if (M > 12) { M = 1; Y++; }
+let state = { staff: JSON.parse(JSON.stringify(DEFAULT_STAFF)), months: {} };
+let db = null, downloads = null, saveTimer = null, saving = false, dirty = false;
+
+try { const s = localStorage.getItem('roster-v1'); if (s) state = JSON.parse(s); } catch (e) {}
+
+const mk = () => monthKey(Y, M);
+function monthData() { const k = mk(); if (!state.months[k]) state.months[k] = { types: {}, cells: {} }; return state.months[k]; }
+function cell(pid, d) { const c = monthData().cells[pid]; return (c && c[d]) || { v: '', lock: false }; }
+function setCell(pid, d, val) { const md = monthData(); md.cells[pid] = md.cells[pid] || {}; if (val) md.cells[pid][d] = val; else delete md.cells[pid][d]; }
+function days() { return dayList(Y, M, monthData().types); }
+
+function persist() {
+  try { localStorage.setItem('roster-v1', JSON.stringify(state)); } catch (e) {}
+  dirty = true; clearTimeout(saveTimer); saveTimer = setTimeout(flush, 900);
+  $('#save').textContent = '儲存中…';
+}
+async function flush() {
+  if (!db) { $('#save').textContent = '已存在這台瀏覽器'; return; }
+  if (saving) { saveTimer = setTimeout(flush, 600); return; }
+  saving = true; dirty = false;
+  try {
+    await db.doc('roster/settings').set({ staff: state.staff });
+    await db.doc('months/' + mk()).set(monthData());
+    $('#save').textContent = '已儲存';
+  } catch (e) { $('#save').textContent = '雲端儲存失敗，已存在這台瀏覽器'; }
+  saving = false;
+}
+
+function render() {
+  const ds = days(), staff = state.staff, D = ds.length;
+  $('#month').textContent = Y + ' 年 ' + M + ' 月';
+  $('#note').textContent = hasHolidayData(Y, M) ? '已套用人事行政總處公告的國定假日' : '這個月份還沒有內建國定假日資料，請點日期手動設為假日';
+  const isH = x => x.type === 'H' || x.type === 'S';
+  let h = '<thead><tr><th class="nm">姓名</th>';
+  ds.forEach(x => { h += `<th class="dh ${isH(x) ? 'hol' : ''} ${x.type !== x.def ? 'ovr' : ''}" data-day="${x.d}" title="${esc(x.holiday || DAY_TYPES[x.type].label)}"><b>${x.d}</b><span>${WEEK[x.w]}</span><i>${x.holiday ? '★' : ({W:'平',F:'五',H:'假',S:'日'})[x.type]}</i></th>`; });
+  h += '<th class="sum">休</th><th class="sum">目標</th></tr></thead><tbody>';
+  let lastG = null;
+  staff.forEach(s => {
+    if (lastG !== null && s.group !== lastG) h += `<tr class="sep"><td colspan="${D + 3}"></td></tr>`;
+    lastG = s.group;
+    let rest = 0;
+    h += `<tr><th class="nm">${esc(s.name)}</th>`;
+    ds.forEach(x => {
+      const c = cell(s.id, x.d);
+      const cls = c.v === '休' ? (c.lock ? 'off red' : 'off blue') : (c.v ? 'on s' + c.v : 'empty');
+      if (c.v === '休') rest++;
+      h += `<td class="c ${cls} ${isH(x) ? 'hol' : ''} ${c.lock && c.v !== '休' ? 'fix' : ''}" data-p="${esc(s.id)}" data-d="${x.d}">${c.v || ''}</td>`;
+    });
+    const t = Number(s.rest) || 0;
+    h += `<td class="sum ${rest !== t ? 'warn' : ''}">${rest}</td><td class="sum">${t}</td></tr>`;
+  });
+  h += `<tr class="gap"><td colspan="${D + 3}"></td></tr>`;
+  let badDays = 0;
+  const cnts = ds.map(x => dayCounts(staff.map(s => cell(s.id, x.d).v)));
+  ds.forEach((x, i) => { if (checkDay(cnts[i], x.type).length) badDays++; });
+  for (const [lab, key, need] of [['早班人數', 'm', 'm'], ['晚班人數', 'ev', 'e']]) {
+    h += `<tr class="cnt"><th class="nm">${lab}</th>`;
+    ds.forEach((x, i) => { const ok = cnts[i][key] === DAY_TYPES[x.type][need]; h += `<td class="${ok ? 'ok' : 'bad'} ${isH(x) ? 'hol' : ''}" title="需要 ${DAY_TYPES[x.type][need]}">${cnts[i][key]}</td>`; });
+    h += '<td></td><td></td></tr>';
+  }
+  h += '<tr class="cnt need"><th class="nm">需要</th>';
+  ds.forEach(x => { const t = DAY_TYPES[x.type]; h += `<td class="${isH(x) ? 'hol' : ''}">${t.m}/${t.e}</td>`; });
+  h += '<td></td><td></td></tr></tbody>';
+  $('#grid').innerHTML = h;
+  const filled = staff.some(s => ds.some(x => cell(s.id, x.d).v && !cell(s.id, x.d).lock));
+  $('#status').className = 'status ' + (!filled ? '' : badDays ? 'bad' : 'ok');
+  $('#status').textContent = !filled ? '先點格子標好指定休，再按「自動排班」' : badDays ? badDays + ' 天人數不符（紅色數字），可再按一次自動排班或手動調整' : '每天早晚班人數都符合規則';
+}
+
+// 彈出選單
+function pop(target, items, onPick) {
+  const m = $('#pop');
+  m.innerHTML = items.map(([v, lab, cls]) => `<button data-v="${esc(v)}" class="${cls || ''}">${lab}</button>`).join('');
+  m.hidden = false;
+  const r = target.getBoundingClientRect(), w = m.offsetWidth, hgt = m.offsetHeight;
+  let left = Math.min(window.innerWidth - w - 8, Math.max(8, r.left + r.width / 2 - w / 2));
+  let top = r.bottom + 6; if (top + hgt > window.innerHeight - 8) top = Math.max(8, r.top - hgt - 6);
+  m.style.left = left + 'px'; m.style.top = top + 'px';
+  m.onclick = e => { const b = e.target.closest('button'); if (!b) return; m.hidden = true; onPick(b.dataset.v); };
+  m.querySelector('button').focus();
+}
+document.addEventListener('click', e => { if (!e.target.closest('#pop') && !e.target.closest('td.c,th.dh')) $('#pop').hidden = true; });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { $('#pop').hidden = true; closeDlg(); } });
+
+$('#grid').addEventListener('click', e => {
+  const td = e.target.closest('td.c'), th = e.target.closest('th.dh');
+  if (td) {
+    const pid = td.dataset.p, d = +td.dataset.d, s = state.staff.find(x => x.id === pid);
+    const items = [['休', '指定休（紅）', 'red'], ...'ABCE'.split('').filter(k => s.shifts.includes(k)).map(k => [k, '固定 ' + k + '　' + SHIFT_INFO[k].name, 's' + k]), ['', '交給系統排', 'clear']];
+    pop(td, items, v => { setCell(pid, d, v ? { v, lock: true } : null); persist(); render(); });
+  } else if (th) {
+    const d = +th.dataset.day;
+    pop(th, [['W', '平日（早2 晚3）'], ['F', '週五（早2 晚4）'], ['H', '假日（早4 晚5）'], ['S', '週日（早4 晚5，含1個E）'], ['', '恢復預設', 'clear']], v => {
+      const t = monthData().types; if (v) t[d] = v; else delete t[d];
+      const def = dayList(Y, M, {})[d - 1].def; if (t[d] === def) delete t[d];
+      persist(); render();
+    });
+  }
+});
+
+$('#auto').onclick = () => {
+  const btn = $('#auto'); btn.disabled = true; btn.textContent = '排班中…';
+  setTimeout(() => {
+    const ds = days(), staff = state.staff;
+    const fixed = staff.map(s => ds.map(x => { const c = cell(s.id, x.d); return c.lock ? c.v : null; }));
+    const r = autoSchedule(staff, ds, fixed);
+    staff.forEach((s, p) => ds.forEach((x, d) => { if (!fixed[p][d]) setCell(s.id, x.d, { v: r.grid[p][d], lock: false }); }));
+    persist(); render(); btn.disabled = false; btn.textContent = '自動排班';
+  }, 30);
+};
+$('#clear').onclick = () => {
+  const md = monthData();
+  for (const pid in md.cells) for (const d in md.cells[pid]) if (!md.cells[pid][d].lock) delete md.cells[pid][d];
+  persist(); render();
+};
+$('#prev').onclick = () => { if (--M < 1) { M = 12; Y--; } loadMonth(); render(); };
+$('#next').onclick = () => { if (++M > 12) { M = 1; Y++; } loadMonth(); render(); };
+
+$('#xlsx').onclick = async () => {
+  const ds = days(), staff = state.staff;
+  const rows = rosterRows(Y, M, staff, ds, (p, d) => cell(staff[p].id, ds[d].d));
+  const data = buildXlsx(Y + '-' + pad(M), rows, [12, ...ds.map(() => 4.6), 2, 6, 6], [1, 3]);
+  if (!downloads) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })); a.download = '班表_' + Y + '年' + M + '月.xlsx'; document.body.appendChild(a); a.click(); a.remove(); return; }
+  try { await downloads.save({ filename: '班表_' + Y + '年' + M + '月.xlsx', data: new Blob([data]) }); }
+  catch (e) { if (e && e.code !== 'declined') $('#status').textContent = '下載沒有完成：' + (e.message || e.code); }
+};
+
+// 人員設定
+function closeDlg() { $('#dlg').hidden = true; }
+function staffForm() {
+  const rows = state.staff.map((s, i) => `<div class="srow" data-i="${i}">
+    <input class="sn" value="${esc(s.name)}" aria-label="姓名">
+    <label class="sg">組<select>${[1, 2, 3, 4].map(g => `<option ${s.group == g ? 'selected' : ''}>${g}</option>`).join('')}</select></label>
+    <span class="chk">${'ABCE'.split('').map(k => `<label><input type="checkbox" data-k="shifts" value="${k}" ${s.shifts.includes(k) ? 'checked' : ''}>${k}</label>`).join('')}</span>
+    <span class="chk">${[['W', '平日'], ['F', '週五'], ['H', '假日']].map(([k, l]) => `<label><input type="checkbox" data-k="days" value="${k}" ${s.days.includes(k) ? 'checked' : ''}>${l}</label>`).join('')}</span>
+    <label class="sr">休<input type="number" min="0" max="31" value="${Number(s.rest) || 0}"></label>
+    <span class="mv"><button data-a="up" aria-label="上移">↑</button><button data-a="down" aria-label="下移">↓</button><button data-a="del" aria-label="刪除">✕</button></span></div>`).join('');
+  $('#staffList').innerHTML = rows;
+}
+function readForm() {
+  state.staff = [...document.querySelectorAll('.srow')].map(r => {
+    const s = state.staff[+r.dataset.i];
+    return { id: s.id, name: r.querySelector('.sn').value.trim() || '未命名', group: +r.querySelector('select').value,
+      shifts: [...r.querySelectorAll('[data-k=shifts]:checked')].map(x => x.value).join(''),
+      days: [...r.querySelectorAll('[data-k=days]:checked')].map(x => x.value).join(''),
+      rest: +r.querySelector('.sr input').value || 0 };
+  });
+}
+$('#staffBtn').onclick = () => { staffForm(); $('#dlg').hidden = false; };
+$('#staffList').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  readForm(); const i = +b.closest('.srow').dataset.i, a = b.dataset.a, st = state.staff;
+  if (a === 'up' && i > 0) [st[i - 1], st[i]] = [st[i], st[i - 1]];
+  if (a === 'down' && i < st.length - 1) [st[i + 1], st[i]] = [st[i], st[i + 1]];
+  if (a === 'del') st.splice(i, 1);
+  staffForm();
+});
+$('#addStaff').onclick = () => { readForm(); state.staff.push({ id: 's' + Date.now().toString(36), name: '新同事', group: 2, shifts: 'ABC', days: 'WFH', rest: 8 }); staffForm(); };
+$('#saveStaff').onclick = () => { readForm(); closeDlg(); persist(); render(); };
+$('#cancelStaff').onclick = closeDlg;
+
+async function loadMonth() {
+  if (!db) return;
+  try {
+    const snap = await db.doc('months/' + mk()).get();
+    if (snap.exists && !dirty) { state.months[mk()] = JSON.parse(JSON.stringify(snap.data())); render(); }
+  } catch (e) {}
+}
+
+render();
+(async () => {
+  if (typeof claude === 'undefined') { $('#save').textContent = '資料存在這台電腦的瀏覽器'; return; }
+  try { downloads = await claude.use('downloads'); } catch (e) {}
+  try { db = await claude.use('db'); } catch (e) { db = null; }
+  if (!db) { $('#save').textContent = '已存在這台瀏覽器'; return; }
+  const timer = setTimeout(() => { $('#save').textContent = '雲端資料暫時連不上，先存在這台瀏覽器'; }, 10000);
+  try {
+    const s = await db.doc('roster/settings').get();
+    clearTimeout(timer);
+    if (s.exists && !dirty) { const d = s.data(); if (Array.isArray(d.staff) && d.staff.length) state.staff = JSON.parse(JSON.stringify(d.staff)); }
+    await loadMonth();
+    $('#save').textContent = '已同步';
+    render();
+  } catch (e) { clearTimeout(timer); $('#save').textContent = '已存在這台瀏覽器'; }
+})();
+
+}
+</script>
+</body>
+</html>
